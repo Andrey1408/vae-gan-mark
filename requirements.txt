@@ -1,0 +1,12 @@
+torch
+torchvision
+sentence-transformers
+opencv-python
+numpy
+Pillow
+tqdm
+matplotlib
+scikit-learn
+torchinfo
+wandb
+kagglehub
