@@ -21,7 +21,7 @@ from torchinfo import summary
 from pathlib import Path 
 import wandb 
 
-os.environ["WANDB_API_KEY"] = f9bd53ddbed845e1c532581b230e7da2dbc3673f
+os.environ["WANDB_API_KEY"] = "f9bd53ddbed845e1c532581b230e7da2dbc3673f"
 # --------------- Константы и Конфигурация ---------------
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
