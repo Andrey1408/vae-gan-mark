@@ -20,14 +20,12 @@ from sklearn.model_selection import train_test_split
 from torchinfo import summary
 from pathlib import Path 
 import wandb 
-from kaggle_secrets import UserSecretsClient
-user_secrets = UserSecretsClient()
-secret_value_0 = user_secrets.get_secret("WANDB_API_KEY")
-os.environ["WANDB_API_KEY"] = secret_value_0
+
+os.environ["WANDB_API_KEY"] = f9bd53ddbed845e1c532581b230e7da2dbc3673f
 # --------------- Константы и Конфигурация ---------------
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EPOCHS = 100
+EPOCHS = 150
 Z_CH = 128 # Размерность латентного пространства VAE
 TEXT_CH = 64 # Целевая размерность текстового эмбеддинга после проекции
 PATCH_SHAPE = (448, 64) # (Ширина, Высота)
@@ -42,7 +40,7 @@ GRAD_CLIP_NORM = 1.0 # Максимальная норма для отсечен
 
 WANDB_PROJECT = "VAE-GAN" # Название вашего проекта в wandb
 WANDB_ENTITY = None # Ваш username или команда в wandb (можно оставить None)
-WANDB_RUN_NAME = "old test 100 epoch" # Имя запуска (можно задать или оставить None для автогенерации)
+WANDB_RUN_NAME = "a10 test 100 epoch" # Имя запуска (можно задать или оставить None для автогенерации)
 WANDB_SAVE_CODE = True
 # --------------- Архитектура Моделей ---------------
 
