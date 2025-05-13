@@ -505,7 +505,7 @@ def main():
     dataset = MarkDatasetAnyBBox(
         json_dir = '/home/ubuntu/.cache/kagglehub/datasets/andrey101/marketing-data-new/versions/1/marketing_materials_big/all_annotations', # Замените или возьмите из config
         ru_image_dir = '/home/ubuntu/.cache/kagglehub/datasets/andrey101/marketing-data-new/versions/1/marketing_materials_big/aug_ru', # Замените или возьмите из config
-        en_image_dir = '/home/ubuntu/.cache/kagglehub/datasets/andrey101/marketing-data-new/versions/1/marketing_materials_big/marketing_materials_big/aug_en', # Замените или возьмите из config
+        en_image_dir = '/home/ubuntu/.cache/kagglehub/datasets/andrey101/marketing-data-new/versions/1/marketing_materials_big/aug_en', # Замените или возьмите из config
         mask_dir = '/home/ubuntu/.cache/kagglehub/datasets/andrey101/marketing-data-new/versions/1/marketing_materials_big/masks_from_ru_bbox', # Замените или возьмите из config
         out_shape = (config.patch_width, config.patch_height)
     )
