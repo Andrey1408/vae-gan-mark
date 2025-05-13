@@ -322,7 +322,7 @@ def hinge_loss(preds, target):
 # --------------- Циклы Обучения и Валидации ---------------
 
 @torch.no_grad()
-def val_loop(val_loader, model, criterion_recon, epoch, device, show_patches=8):
+def val_loop(val_loader, model, criterion_recon, epoch, device, show_patches=16):
     """Цикл валидации: вычисляет потери и логирует изображения в wandb."""
     model.eval()
     shown_patches = 0
