@@ -697,12 +697,12 @@ def main():
     scheduler_generator = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer_generator, mode=config_wandb.scheduler_mode, factor=config_wandb.scheduler_factor,
         patience=config_wandb.scheduler_patience, threshold=config_wandb.scheduler_threshold,
-        min_lr=config_wandb.scheduler_min_lr, verbose=SCHEDULER_VERBOSE
+        min_lr=config_wandb.scheduler_min_lr
     )
     scheduler_discriminator = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer_discriminator, mode=config_wandb.scheduler_mode, factor=config_wandb.scheduler_factor,
         patience=config_wandb.scheduler_patience, threshold=config_wandb.scheduler_threshold,
-        min_lr=config_wandb.scheduler_min_lr, verbose=SCHEDULER_VERBOSE
+        min_lr=config_wandb.scheduler_min_lr
     )
     # --- КОНЕЦ ДОБАВЛЕНИЯ ---
 
