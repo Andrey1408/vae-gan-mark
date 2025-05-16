@@ -27,7 +27,7 @@ os.environ["WANDB_API_KEY"] = "f9bd53ddbed845e1c532581b230e7da2dbc3673f"
 # --------------- Константы и Конфигурация ---------------
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EPOCHS = 150
+EPOCHS = 200
 Z_CH = 128
 TEXT_CH = 64
 PATCH_SHAPE = (448, 64)  # (Ширина, Высота)
