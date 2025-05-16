@@ -10,3 +10,4 @@ scikit-learn
 torchinfo
 wandb
 kagglehub
+huggingface_hub
