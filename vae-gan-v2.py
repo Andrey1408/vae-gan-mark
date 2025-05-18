@@ -34,7 +34,7 @@ ALPHABET_STR = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]
 VOCAB_SIZE = len(ALPHABET_STR) + 1 # +1 для <PAD> токена (индекс 0)
 CHAR_EMB_DIM = 256          # Размерность эмбеддинга одного символа
 CHAR_RNN_HIDDEN_DIM = 512   # Размерность скрытого состояния RNN/GRU для текста (в одну сторону)
-CHAR_RNN_LAYERS = 4         # Количество слоев RNN
+CHAR_RNN_LAYERS = 2         # Количество слоев RNN
 
 # Параметры обучения
 LR_G = 1e-4
