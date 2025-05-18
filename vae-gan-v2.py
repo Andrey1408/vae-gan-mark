@@ -32,8 +32,8 @@ PATCH_SHAPE = (448, 64)
 
 ALPHABET_STR = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
 VOCAB_SIZE = len(ALPHABET_STR) + 1 # +1 для <PAD> токена (индекс 0)
-CHAR_EMB_DIM = 256          # Размерность эмбеддинга одного символа
-CHAR_RNN_HIDDEN_DIM = 512   # Размерность скрытого состояния RNN/GRU для текста (в одну сторону)
+CHAR_EMB_DIM = 128         # Размерность эмбеддинга одного символа
+CHAR_RNN_HIDDEN_DIM = 256   # Размерность скрытого состояния RNN/GRU для текста (в одну сторону)
 CHAR_RNN_LAYERS = 2         # Количество слоев RNN
 
 # Параметры обучения
@@ -543,7 +543,7 @@ def val_loop(val_loader_input,
     total_val_disc_loss_accum = 0.0
     
     total_val_generator_loss_accum = 0.0 # Общая потеря генератора на валидации
-
+    shown_patches = 0
     total_samples_processed_val = 0
     log_images_list_wandb = []
 
@@ -612,7 +612,7 @@ def val_loop(val_loader_input,
         
         total_samples_processed_val += current_batch_size_val
 
-
+        
         if shown_patches < show_patches_count:
                 ru_patch_cpu = ru_patch_val[:show_patches_count-shown_patches].cpu()
                 en_patch_cpu = en_patch_val[:show_patches_count-shown_patches].cpu()
