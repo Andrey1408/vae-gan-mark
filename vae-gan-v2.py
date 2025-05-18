@@ -619,7 +619,7 @@ def val_loop(val_loader_input,
                 fake_patch_en_cpu = fake_patch_en_val[:show_patches_count-shown_patches].cpu()
                 texts_to_show = text_en_val_list[:show_patches_count-shown_patches]
 
-                for i_img in range(en_patch_cpu):
+                for i_img in range(en_patch_cpu.size(0)):
                     if shown_patches >= show_patches_count: break
                     real_p, fake_p, ru_p = en_patch_cpu[i_img], fake_patch_en_cpu[i_img], ru_patch_cpu[i_img]
                     text_label = texts_to_show[i_img][:50] + "..." if len(texts_to_show[i_img]) > 50 else texts_to_show[i_img]
