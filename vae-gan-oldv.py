@@ -60,6 +60,15 @@ WANDB_ENTITY = None
 WANDB_RUN_NAME = "unet_char_emb_v3" 
 WANDB_SAVE_CODE = True
 
+def center_crop_like(src, trgt):
+    """Crop src по центру до spatial размерности trgt (torch.Tensor)"""
+    _, _, h, w = trgt.shape
+    src_h, src_w = src.shape[2], src.shape[3]
+    dh, dw = src_h - h, src_w - w
+    # Центрируем crop (лучше чем .resize если oversize 1-3 px)
+    crop_top = dh // 2
+    crop_left = dw // 2
+    return src[:, :, crop_top:crop_top+h, crop_left:crop_left+w]
 
 # --------------- ИЗМЕНЕННЫЙ CharacterTokenEncoder (возвращает пространственные признаки) ---------------
 class CharacterTokenEncoder(nn.Module):
@@ -271,30 +280,30 @@ class VAEDecoderWithSpatialFiLM(nn.Module):
             nn.Conv2d(out_c, out_c, kernel_size, padding=padding, bias=False),
             nn.BatchNorm2d(out_c), nn.ReLU(inplace=True)
         )
-    @staticmethod
-    def _crop_to_min_shape(a, b):
-        # crops both a and b to [min(h), min(w)]
-        h = min(a.shape[2], b.shape[2])
-        w = min(a.shape[3], b.shape[3])
-        return a[:, :, :h, :w], b[:, :, :h, :w]
 
     def forward(self, z_latents, spatial_text_features_base, skips_list):
         z_expanded_spatial = z_latents.expand(-1, -1, 1, self.initial_w)
-        combined_bottleneck_input = torch.cat([z_expanded_spatial, spatial_text_features_base], dim=1)
+        spatial_text_features_for_bottleneck_concat = F.interpolate(
+                spatial_text_features_base,
+                size=(1, self.initial_w),  # Целевая высота=1, целевая ширина=self.initial_w (56)
+                mode='bilinear',           # Режим интерполяции
+                align_corners=False        # Часто рекомендуется для карт признаков
+        )
+
+        combined_bottleneck_input = torch.cat([z_expanded_spatial, spatial_text_features_for_bottleneck_concat], dim=1)
         x_current = self.bottleneck_proc(combined_bottleneck_input)  # (B, bottleneck_ch, H/8, W/8)
 
         # 1st skip (deepest): s3
         x_upsampled = self.up_tconv1(x_current)
         gated_skip3 = self.skip_gates[0](skips_list[2])
-        x_upsampled, gated_skip3 = self._crop_to_min_shape(x_upsampled, gated_skip3)
         x_concat = torch.cat([x_upsampled, gated_skip3], dim=1)
         x_modulated = self.spatial_film1(x_concat, spatial_text_features_base)
         x_current = self.conv_block1(x_modulated)
+  
 
         # 2nd skip: s2
         x_upsampled = self.up_tconv2(x_current)
         gated_skip2 = self.skip_gates[1](skips_list[1])
-        x_upsampled, gated_skip2 = self._crop_to_min_shape(x_upsampled, gated_skip2)
         x_concat = torch.cat([x_upsampled, gated_skip2], dim=1)
         x_modulated = self.spatial_film2(x_concat, spatial_text_features_base)
         x_current = self.conv_block2(x_modulated)
@@ -302,7 +311,6 @@ class VAEDecoderWithSpatialFiLM(nn.Module):
         # 3rd skip (shallowest): s1
         x_upsampled = self.up_tconv3(x_current)
         gated_skip1 = self.skip_gates[2](skips_list[0])
-        x_upsampled, gated_skip1 = self._crop_to_min_shape(x_upsampled, gated_skip1)
         x_concat = torch.cat([x_upsampled, gated_skip1], dim=1)
         x_modulated = self.spatial_film3(x_concat, spatial_text_features_base)
         x_current = self.conv_block3(x_modulated)
