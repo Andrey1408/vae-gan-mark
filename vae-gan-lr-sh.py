@@ -1,4 +1,3 @@
-# --------------- Импорты ---------------
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,30 +26,30 @@ os.environ["WANDB_API_KEY"] = "f9bd53ddbed845e1c532581b230e7da2dbc3673f"
 # --------------- Константы и Конфигурация ---------------
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EPOCHS = 200
+EPOCHS = 150
 Z_CH = 128
 TEXT_CH = 64
 PATCH_SHAPE = (448, 64)  # (Ширина, Высота)
 TRANSFORMER_MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
 LR_G = 1e-4
 LR_D = 1e-4
-KL_WEIGHT = 0.005 
+KL_WEIGHT = 0.001 
 GAN_WEIGHT = 0.1
-PERC_WEIGHT = 0.1
+PERC_WEIGHT = 0.2
 RECON_WEIGHT = 1.0
 GRAD_CLIP_NORM = 1.0
 
 # Параметры для ReduceLROnPlateau
 SCHEDULER_MODE = 'min'      # 'min' для метрик, которые нужно минимизировать (например, loss)
-SCHEDULER_FACTOR = 0.2    # Фактор уменьшения LR (lr = lr * factor)
-SCHEDULER_PATIENCE = 10   # Количество эпох без улучшения, после которых LR снижается
+SCHEDULER_FACTOR = 0.95    # Фактор уменьшения LR (lr = lr * factor)
+SCHEDULER_PATIENCE = 15   # Количество эпох без улучшения, после которых LR снижается
 SCHEDULER_THRESHOLD = 0.0001 # Порог для измерения значительного изменения
 SCHEDULER_MIN_LR = 1e-7     # Минимальный LR, до которого может снизиться
-SCHEDULER_VERBOSE = True    # Выводить сообщение при снижении LR
 
-WANDB_PROJECT = "VAE-GAN"
+
+WANDB_PROJECT = "VAE-GAN-test"
 WANDB_ENTITY = None
-WANDB_RUN_NAME = "a10_ReduceLROnP_KL005" # Обновленное имя для отражения изменений
+WANDB_RUN_NAME = "a10_old_v3" # Обновленное имя для отражения изменений
 WANDB_SAVE_CODE = True
 
 # --------------- Архитектура Моделей ---------------
@@ -408,35 +407,79 @@ def hinge_loss(predictions, target_is_real):
 
 # --------------- Циклы Обучения и Валидации ---------------
 @torch.no_grad()
-def val_loop(val_loader, model, criterion_recon, epoch, device, show_patches=16):
+def val_loop(val_loader, model, disc, criterion_recon, 
+            criterion_gan, epoch, device, vgg_model_for_loss, vgg_normalizer_for_loss, show_patches=16):
     """Цикл валидации: вычисляет потери и логирует изображения в wandb."""
     model.eval()
+    disc.eval()
     shown_patches = 0
     print("Запуск цикла валидации...")
     log_images = []
-    total_val_recon_loss = 0.0
-    total_samples = 0
+    total_val_recon_loss_accum = 0.0
+    total_val_kl_loss_accum = 0.0
+    total_val_gan_g_loss_accum = 0.0
+    total_val_perc_loss_accum = 0.0
+    total_val_disc_loss_accum = 0.0
+    total_val_generator_loss_accum = 0.0
+    total_samples_processed_val = 0
 
     progress_bar = tqdm(val_loader, desc=f"Эпоха {epoch} Валидация", unit="batch", dynamic_ncols=True, leave=False, ascii=True)
     for batch_data in progress_bar:
         if batch_data is None: continue
         ru_patch, en_patch, mask_patch, text_en = batch_data
-        ru_patch, en_patch, mask_patch = ru_patch.to(device), en_patch.to(device), mask_patch.to(device)
-        batch_size = en_patch.size(0)
+        ru_patch, en_patch_val, mask_patch = ru_patch.to(device), en_patch.to(device), mask_patch.to(device)
+        batch_size = en_patch_val.size(0)
 
-        try: fake_patch_en, mu, logvar = model(ru_patch, mask_patch, text_en)
+        try: fake_patch_en_val, mu_val, logvar_val = model(ru_patch, mask_patch, text_en)
         except Exception as e: print(f"\nОшибка инференса на валидации: {e}"); continue
 
-        # Вычисление и аккумуляция потерь реконструкции
-        recon_loss = criterion_recon(fake_patch_en, en_patch)
-        total_val_recon_loss += recon_loss.item() * batch_size
-        total_samples += batch_size
+        fake_preds_for_G_val = disc(fake_patch_en_val)
+        
+        # 2. Recon Loss
+        recon_loss_val = criterion_recon(fake_patch_en_val, en_patch_val)
+        
+        # 3. KL Loss
+        kl_loss_val_items = -0.5 * torch.mean(1 + logvar_val - mu_val.pow(2) - logvar_val.exp(), dim=[1, 2, 3])
+        kl_loss_val = torch.mean(kl_loss_val_items)
+        
+        # 4. GAN Loss для Генератора
+        gan_loss_g_val = criterion_gan(fake_preds_for_G_val, None) # Target None для генератора
+        
+        # 5. Perceptual Loss
+        perc_loss_val = perceptual_loss(fake_patch_en_val, en_patch_val, vgg_model_for_loss, vgg_normalizer_for_loss)
+        
+        # Общая потеря Генератора (для логирования, не для оптимизации здесь)
+        # Используем те же веса, что и в train_loop (предполагается, что они доступны глобально или переданы)
+        # Глобальные веса: RECON_WEIGHT, KL_WEIGHT, GAN_WEIGHT, PERC_WEIGHT
+        loss_G_val_total = (RECON_WEIGHT * recon_loss_val +
+                            KL_WEIGHT * kl_loss_val +
+                            GAN_WEIGHT * gan_loss_g_val +
+                            PERC_WEIGHT * perc_loss_val)
+
+        # --- Вычисление потерь Дискриминатора (как в train_loop, но без backward() и step()) ---
+        real_preds_val_d = disc(en_patch_val)
+        loss_D_real_val = criterion_gan(real_preds_val_d, 1)
+        # Важно: используем .detach() для fake_patch_en_val при вычислении потерь D,
+        # так как здесь мы оцениваем D, а не обучаем G через D.
+        fake_preds_detached_val_d = disc(fake_patch_en_val.detach())
+        loss_D_fake_val = criterion_gan(fake_preds_detached_val_d, 0)
+        loss_D_val_total = (loss_D_real_val + loss_D_fake_val) * 0.5
+        
+        # Аккумуляция всех потерь
+        total_val_generator_loss_accum += loss_G_val_total.item() * batch_size
+        total_val_disc_loss_accum += loss_D_val_total.item() * batch_size
+        total_val_recon_loss_accum += recon_loss_val.item() * batch_size
+        total_val_kl_loss_accum += kl_loss_val.item() * batch_size
+        total_val_gan_g_loss_accum += gan_loss_g_val.item() * batch_size
+        total_val_perc_loss_accum += perc_loss_val.item() * batch_size
+        
+        total_samples_processed_val += batch_size
 
         # Логика для визуализации
         if shown_patches < show_patches:
             ru_patch_cpu = ru_patch[:show_patches-shown_patches].cpu()
             en_patch_cpu = en_patch[:show_patches-shown_patches].cpu()
-            fake_patch_en_cpu = fake_patch_en[:show_patches-shown_patches].cpu()
+            fake_patch_en_cpu = fake_patch_en_val[:show_patches-shown_patches].cpu()
             texts_to_show = text_en[:show_patches-shown_patches]
 
             for i in range(len(en_patch_cpu)):
@@ -450,16 +493,34 @@ def val_loop(val_loader, model, criterion_recon, epoch, device, show_patches=16)
                 shown_patches += 1
 
     # Вычисление средней потери
-    avg_val_recon_loss = total_val_recon_loss / total_samples if total_samples > 0 else 0.0
-    print(f"\nValidation Средняя Recon Loss: {avg_val_recon_loss:.4f}")
+    avg_val_gen_loss = total_val_generator_loss_accum / total_samples_processed_val if total_samples_processed_val > 0 else float('inf')
+    avg_val_disc_loss = total_val_disc_loss_accum / total_samples_processed_val if total_samples_processed_val > 0 else float('inf')
+    avg_val_recon_loss = total_val_recon_loss_accum / total_samples_processed_val if total_samples_processed_val > 0 else float('inf')
+    avg_val_kl_loss = total_val_kl_loss_accum / total_samples_processed_val if total_samples_processed_val > 0 else float('inf')
+    avg_val_gan_g_loss = total_val_gan_g_loss_accum / total_samples_processed_val if total_samples_processed_val > 0 else float('inf')
+    avg_val_perc_loss = total_val_perc_loss_accum / total_samples_processed_val if total_samples_processed_val > 0 else float('inf')
+
+    print(f"\nValidation Эпоха {epoch}:")
+    print(f"  Avg G Loss: {avg_val_gen_loss:.4f}, Avg D Loss: {avg_val_disc_loss:.4f}")
+    print(f"  Avg Recon: {avg_val_recon_loss:.4f}, Avg KL: {avg_val_kl_loss:.4f}")
+    print(f"  Avg GAN_G: {avg_val_gan_g_loss:.4f}, Avg Perc: {avg_val_perc_loss:.4f}")
 
     # Логирование в wandb
-    log_dict = { "val/recon_loss": avg_val_recon_loss }
-    if log_images: log_dict["validation/examples"] = log_images
-    wandb.log(log_dict, step=epoch) # Логируем с номером текущей эпохи
+    log_dict_val_wandb = {
+        "val/generator_loss": avg_val_gen_loss,
+        "val/discriminator_loss": avg_val_disc_loss,
+        "val/recon_loss": avg_val_recon_loss,
+        "val/kl_loss_raw":avg_val_kl_loss, 
+        "val/gan_loss_g": avg_val_gan_g_loss,
+        "val/perceptual_loss": avg_val_perc_loss,
+    }
+    if log_images: log_dict_val_wandb["validation/examples"] = log_images
+    wandb.log(log_dict_val_wandb, step=epoch) # Логируем с номером текущей эпохи
 
     print("Завершен цикл валидации.")
     model.train()
+    disc.train()
+
     return avg_val_recon_loss
 
       
@@ -480,17 +541,10 @@ def train_loop(train_loader, val_loader, model, disc, opt_G, opt_D,
     
     vgg_model_for_loss, vgg_normalizer_for_loss = get_vgg_feat(device)
 
-    # progress_bar_train = tqdm(
-    #     train_loader,
-    #     desc=f"Эпоха {epoch+1} Обучение",
-    #     unit="batch",
-    #     mininterval=1.0,
-    #     dynamic_ncols=True,
-    #     leave=False,
-    #     ascii=True
-    # )
+    progress_bar_train = tqdm(train_loader, desc=f"Эпоха {epoch+1} Трен.", unit="batch",
+                              dynamic_ncols=True, leave=False, ascii=True)
 
-    for batch_data in tqdm(train_loader): 
+    for batch_data in progress_bar_train: 
         if batch_data is None:
             continue
         
@@ -570,7 +624,7 @@ def train_loop(train_loader, val_loader, model, disc, opt_G, opt_D,
     current_avg_val_loss = float('inf') # avg_val_loss из вашего кода
     if val_loop_fn is not None and val_loader is not None:
         current_avg_val_loss = val_loop_fn(
-            val_loader, model, criterion_recon, epoch + 1, device, # epoch+1 для val_loop
+            val_loader, model, disc, criterion_recon, criterion_gan, epoch + 1, device, vgg_model_for_loss, vgg_normalizer_for_loss # epoch+1 для val_loop
         )
 
     # --- ДОБАВЛЕНО: Шаг планировщиков ---
